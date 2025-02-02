@@ -1,9 +1,10 @@
+import time
+from datetime import date
 from urllib.parse import urljoin
 
 import pandas as pd
 from dateutil import parser
 from playwright.sync_api import sync_playwright
-from datetime import date
 
 
 def scrape_spark_arena():
@@ -15,44 +16,66 @@ def scrape_spark_arena():
 
         year = date.today().year
         events = []
-        event_cards = page.query_selector_all("li.MuiCardActionArea-root")
-        print(f"Found {len(event_cards)} event cards")
+        page_number = 1
 
-        for card in event_cards:
-            try:
-                # Title
-                title = (
-                    card.query_selector("h3.MuiTypography-header3").inner_text().strip()
+        while True:
+            print(f"Scraping page {page_number}...")
+            page.wait_for_load_state("networkidle")
+
+            event_cards = page.query_selector_all("li.MuiCardActionArea-root")
+            print(f"Found {len(event_cards)} event cards")
+
+            for card in event_cards:
+                try:
+                    title = (
+                        card.query_selector("h3.MuiTypography-header3")
+                        .inner_text()
+                        .strip()
+                    )
+                except Exception:
+                    title = "N/A"
+                    continue
+
+                try:
+                    raw_date = (
+                        card.query_selector("time[class*='bgcce-ltr']")
+                        .inner_text()
+                        .strip()
+                    )
+                    date_str = " ".join(raw_date.split()[1:]) + f" {year}"
+                    event_date = (
+                        parser.parse(date_str, dayfirst=True).date().isoformat()
+                    )
+                except Exception:
+                    event_date = "N/A"
+
+                try:
+                    rel_url = card.query_selector("a.event-ticket-link").get_attribute(
+                        "href"
+                    )
+                    full_url = urljoin(base_url, rel_url)
+                except Exception:
+                    full_url = "N/A"
+
+                events.append(
+                    {"Title": title, "Event Date": event_date, "URL": full_url}
                 )
-            except Exception as e:
-                title = "N/A"
-                print(f"Warning: Could not find event title: {e}")
-                continue
 
-            try:
-                raw_date = (
-                    card.query_selector("time[class*='bgcce-ltr']").inner_text().strip()
-                )
-                # Convert "TUE 18 FEB" to "18 FEB 2024"
-                date_str = " ".join(raw_date.split()[1:]) + f" {year}"  # Remove weekday
-                event_date = parser.parse(date_str, dayfirst=True).date().isoformat()
-            except Exception as e:
-                print(f"Date parsing failed for '{raw_date}': {e}")
-                event_date = "N/A"
+            # ✅ Check if the Next button exists and is visible
+            next_button = page.query_selector("button[aria-label='Go to next page']")
+            if next_button and next_button.is_visible():
+                try:
+                    print(f"Navigating to page {page_number + 1}...")
+                    next_button.click()
+                    time.sleep(2)  # Give time for the new page to load
+                    page_number += 1
+                except Exception as e:
+                    print(f"Error clicking next button: {e}")
+                    break
+            else:
+                print("No more pages or Next button is disabled.")
+                break  # Stop pagination
 
-            try:
-                # URL handling
-                rel_url = card.query_selector("a.event-ticket-link").get_attribute(
-                    "href"
-                )
-                full_url = urljoin(base_url, rel_url)
-            except Exception as e:
-                print(f"Warning: Could not find URL :{e}")
-                full_url = "N/A"
-
-            events.append({"Title": title, "Event Date": event_date, "URL": full_url})
-
-        # Save to CSV
         df = pd.DataFrame(events)
         df.to_csv("data/spark_arena_events.csv", index=False)
         print(f"Successfully saved {len(events)} events")
