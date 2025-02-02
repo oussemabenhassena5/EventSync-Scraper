@@ -33,6 +33,7 @@ def scrape_spark_arena():
                         .strip()
                     )
                 except Exception:
+                    print("Warning: Could not find event title")
                     title = "N/A"
                     continue
 
@@ -46,7 +47,8 @@ def scrape_spark_arena():
                     event_date = (
                         parser.parse(date_str, dayfirst=True).date().isoformat()
                     )
-                except Exception:
+                except Exception as e:
+                    print(f"Date parsing failed for '{raw_date}': {e}")
                     event_date = "N/A"
 
                 try:
@@ -54,11 +56,41 @@ def scrape_spark_arena():
                         "href"
                     )
                     full_url = urljoin(base_url, rel_url)
+                    try:
+                        detail_page = browser.new_page()
+                        detail_page.goto(full_url)
+                        detail_page.wait_for_load_state("networkidle")
+                        time.sleep(2)
+                        description_element = detail_page.query_selector(
+                            "div.rich-text-module"
+                        )
+                        if description_element:
+                            description = description_element.inner_text().strip()
+                        detail_page.close()
+                    except Exception as e:
+                        print(
+                            f"Warning: Failed to extract description for '{title}': {e}"
+                        )
+                        description = "N/A"
                 except Exception:
+                    print("Warning: Could not find Image URL")
                     full_url = "N/A"
+                try:
+                    image_url = card.query_selector(
+                        "div.bgcce-ltr-1cm8tsx > img"
+                    ).get_attribute("src")
+                except Exception:
+                    print("Warning: Could not find Image URL")
+                    image_url = "N/A"
 
                 events.append(
-                    {"Title": title, "Event Date": event_date, "URL": full_url}
+                    {
+                        "Title": title,
+                        "Event Date": event_date,
+                        "URL": full_url,
+                        "Image URL": image_url,
+                        "Description": description,
+                    }
                 )
 
             # ✅ Check if the Next button exists and is visible
