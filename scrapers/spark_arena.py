@@ -61,11 +61,8 @@ def scrape_spark_arena():
                         detail_page.goto(full_url)
                         detail_page.wait_for_load_state("networkidle")
                         time.sleep(2)
-                        description_element = detail_page.query_selector(
-                            "div.rich-text-module"
-                        )
-                        if description_element:
-                            description = description_element.inner_text().strip()
+                        detail_page.query_selector("div.rich-text-module")
+                        description = description_element.inner_text().strip()
                         detail_page.close()
                     except Exception as e:
                         print(
